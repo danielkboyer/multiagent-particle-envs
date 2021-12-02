@@ -9,7 +9,7 @@ class SurvivalWorld(World):
         self.step_number = 0
         self.day_length = 25
         self.day_number = 0
-        self.number_of_days = 3
+        self.number_of_days = 5
         self.done = False
     def step(self):
         World.step(self)
@@ -19,27 +19,29 @@ class SurvivalWorld(World):
                 continue
             if agent.health <= 0:
                 agent.alive = False
-                agent.color = np.array([1, 0, 0])
+                agent.color = np.array([0.85, 0.35, 0.35])
+            agent.health -=1
             for landmark in self.landmarks:
                 if landmark.alive and self.is_collision(agent,landmark) :
-                    agent.health += 50
+                    agent.health += 25
                     landmark.alive = False
-        #remove all eaten foods
-        self.landmarks = [value for value in self.landmarks if value.alive]
+                    landmark.color = np.array([0, 0, 0])
+       
 
-        
         self.step_number +=1
         if self.step_number % self.day_length == 0:
             self.day_number += 1
             #spawn food
-            new_food = [Landmark() for i in range(len(self.agents)*2)]
-            for i, landmark in enumerate(new_food):
-                landmark.name = 'landmark %d' % i
-                landmark.collide = True
-                landmark.movable = False
-                landmark.size = 0.04
-                landmark.alive = True
-                self.landmarks.append(landmark)
+            for i, landmark in enumerate(self.landmarks):
+                if not landmark.alive:
+                    landmark.name = 'landmark %d' % i
+                    landmark.collide = True
+                    landmark.movable = False
+                    landmark.size = 0.04
+                    landmark.alive = True
+                    landmark.color = np.array([0.15, 0.65, 0.15])
+                    landmark.state.p_pos = np.random.uniform(-1, +1, self.dim_p)
+                    landmark.state.p_vel = np.zeros(self.dim_p)
 
         if self.day_number > self.number_of_days:
             self.done = True
@@ -61,7 +63,7 @@ class Scenario(BaseScenario):
         num_agents = 10
         world.num_agents = num_agents
         num_adversaries = 0
-        num_landmarks = 20
+        num_landmarks = 10
         # add agents
         world.agents = [Agent() for i in range(num_agents)]
         for i, agent in enumerate(world.agents):
@@ -71,7 +73,7 @@ class Scenario(BaseScenario):
             agent.adversary = True if i < num_adversaries else False
             agent.size = 0.10
             #The health of the agent
-            agent.health = 100.0
+            agent.health = 50.0
             agent.alive = True
         # add landmarks
         world.landmarks = [Landmark() for i in range(num_landmarks)]
@@ -87,8 +89,7 @@ class Scenario(BaseScenario):
 
     def reset_world(self, world):
         # random properties for agents
-        world.agents[0].color = np.array([0.85, 0.35, 0.35])
-        for i in range(1, world.num_agents):
+        for i in range(0, world.num_agents):
             world.agents[i].color = np.array([0.35, 0.35, 0.85])
         # random properties for landmarks
         for i, landmark in enumerate(world.landmarks):
@@ -99,13 +100,16 @@ class Scenario(BaseScenario):
             agent.state.p_pos = np.random.uniform(-1, +1, world.dim_p)
             agent.state.p_vel = np.zeros(world.dim_p)
             agent.state.c = np.zeros(world.dim_c)
-            agent.health = 100
+            agent.health = 50
             agent.alive = True
         for i, landmark in enumerate(world.landmarks):
             landmark.state.p_pos = np.random.uniform(-1, +1, world.dim_p)
             landmark.state.p_vel = np.zeros(world.dim_p)
 
-    
+        #RESET WORLD VARIABLES 
+        world.step_number = 0
+        world.day_number = 0
+        world.done = False
 
     # return all agents that are not adversaries
     def good_agents(self, world):
@@ -121,10 +125,18 @@ class Scenario(BaseScenario):
         return self.adversary_reward(agent, world) if agent.adversary else self.agent_reward(agent, world)
 
     def agent_reward(self, agent, world):
-       
-        if agent.health > 0:
-            return 1
-        return -1
+        if agent.health <= 0:
+            return -1
+
+        reward = 1
+        for agentBuddy in world.agents:
+            if agentBuddy is agent:
+                continue
+            if agentBuddy.health > 0:
+                reward += .5
+            else:
+                reward -= .5
+        return reward
 
     def adversary_reward(self, agent, world):
         return -1
@@ -137,14 +149,21 @@ class Scenario(BaseScenario):
         # get positions of all entities in this agent's reference frame
         entity_pos = []
         for entity in world.landmarks:
-            entity_pos.append(entity.state.p_pos - agent.state.p_pos)
+            if entity.alive:
+                entity_pos.append(entity.state.p_pos)
+            else:
+                entity_pos.append(entity.state.p_pos * 1000)
      
         # communication of all other agents
         other_pos = []
         for other in world.agents:
             if other is agent: continue
-            other_pos.append(other.state.p_pos - agent.state.p_pos)
+            pos_health_list = list(other.state.p_pos)
+            pos_health_list.append(other.health)
+            other_pos.append(pos_health_list)
 
         
-        return np.concatenate( entity_pos + other_pos,agent.health)
+        obs =  np.concatenate( other_pos+ entity_pos)
+        obs = np.append(obs,agent.health)
+        return obs
     

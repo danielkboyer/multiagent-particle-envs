@@ -243,7 +243,12 @@ class MultiAgentEnv(gym.Env):
                 viewer.geoms = []
                 for geom in self.render_geoms:
                     viewer.add_geom(geom)
-
+        #added this to update colors for cooler viewing
+        for i, entity in enumerate(self.world.entities):
+            if 'agent' in entity.name:
+                self.render_geoms[i].set_color(*entity.color, alpha=0.5)
+            else:
+                self.render_geoms[i].set_color(*entity.color)
         results = []
         for i in range(len(self.viewers)):
             from multiagent import rendering
